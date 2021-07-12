@@ -1,0 +1,292 @@
+/*
+AUTOMATYCZNY SYSTEM PODLEWANIA v1.0
+
+przekaznik dziala na stanie LOW
+
+
+ */
+#define BLYNK_PRINT Serial
+#include <ESP8266WiFi.h>
+#include <BlynkSimpleEsp8266.h>
+//Token blynk oraz dane sieci wifi
+char auth[] = "";
+char ssid[] = "";
+char pass[] = "";
+#include <TimeLib.h>
+#include <WidgetRTC.h>
+// Blynk
+WidgetRTC rtc;
+BlynkTimer timer;
+
+
+// Ustawienia wstepne sytemu
+bool systemOn;
+long ontime;
+int czaswybrany;
+int tryb;
+long czasprzerwy;
+int minimalnawilgotnosc;
+int pompa = D1;
+int swiatlo = D2; // wejscie cyfrowe czujnika zmierzchu
+int stanswiatla;
+float wilgotnosc = 0.0;
+int analog       = A0; // wyjscie analogowe czujnika wiglotnosci 
+unsigned long aktualnyCzas = 0; // dane do timera
+unsigned long zapamietanyCzas = 0; // dane do timera
+long aktualnadata; // data podana w sekundach
+long dataostatniegopodlewania; // data podana w sekundach
+long roznica; // data podana w sekundach
+WidgetLED leddzien(V5);
+WidgetLED lednoc(V6);
+
+
+
+
+
+
+  // Synchronizowanie unix-time oraz stanow pinow wirtualnych
+BLYNK_CONNECTED()
+{
+  rtc.begin();  
+ Blynk.syncVirtual(V1, V2, V3, V4, V5, V6 ,V7, V8, V9, V10, V11, V12, V13);   
+}
+
+ //przypisanie V3 w blynk jako wlacznik systemu
+BLYNK_WRITE(V3)
+{
+  // sprawdzam status systemu 
+  systemOn = param.asInt();
+  if (systemOn)
+  {
+   digitalWrite(LED_BUILTIN,0);
+   delay(100); 
+    digitalWrite(LED_BUILTIN,1);
+   delay(100); 
+    digitalWrite(LED_BUILTIN,0);
+       delay(100); 
+    digitalWrite(LED_BUILTIN,1);
+  }
+  else
+  {    
+  } 
+}
+
+// Odczyt ostatniego czasu podlewania  
+BLYNK_WRITE(V7)
+{  
+dataostatniegopodlewania = param.asInt() ; 
+}
+
+
+// Odczyt czasu jaki ma byc wlaczona pompa
+BLYNK_WRITE(V2)
+{  
+czaswybrany = param.asInt() ; 
+}
+
+// Odczyt trybu podlewania automatyczny/maualny
+BLYNK_WRITE(V10)
+{  
+tryb = param.asInt() ; 
+}
+
+// Odczyt trybu podlewania automatyczny/maualny
+BLYNK_WRITE(V11)
+{  
+czasprzerwy = param.asInt() ; 
+}
+
+// Odczyt trybu podlewania automatyczny/maualny
+BLYNK_WRITE(V12)
+{  
+minimalnawilgotnosc = param.asInt() ; 
+}
+
+
+
+//sprawdzenie czy system jest wlaczony jesli tak odczyt danych z czujnikow co 10sek
+void odczytczujnikow () 
+{
+if (systemOn){
+aktualnyCzas = millis();
+aktualnadata = now();
+stanswiatla = digitalRead(swiatlo);
+
+roznica = (aktualnadata-dataostatniegopodlewania);
+  //Jeśli różnica wynosi ponad 10s
+  if (aktualnyCzas - zapamietanyCzas >= 10000UL) {
+    //Zapamietaj aktualny czas
+    zapamietanyCzas = aktualnyCzas;
+     //Data ostatniego podlewania
+      Serial.println("***************************AUTOMATYCZNY SYSTEM PODLEWANIA***************************");
+ Serial.println(aktualnadata);
+     Serial.println(dataostatniegopodlewania);
+     Serial.print("Roznica:");
+     Serial.println(roznica);
+      Blynk.virtualWrite(V7, dataostatniegopodlewania);
+      Blynk.virtualWrite(V8, roznica / 3600);
+      Blynk.virtualWrite(V9, roznica / 60);
+    
+float odczytwilgotnosci = analogRead(analog);     
+wilgotnosc = ((1024 - odczytwilgotnosci)/512) * 100;   //zmiana odczytu analogowego na procenty
+  Blynk.virtualWrite(V13, wilgotnosc);
+Serial.print("Wilgotnosc:");
+Serial.println(wilgotnosc);
+
+
+    if (stanswiatla == 0)
+    {
+leddzien.on();
+lednoc.off();
+     Serial.println("Na zewnatrz: dzien");  
+    }
+    else {
+leddzien.off();
+lednoc.on();
+     Serial.println("Na zewnatrz: noc"); 
+     
+    }
+  }
+}
+ else {
+leddzien.off();
+lednoc.off();
+    }
+}
+
+
+
+
+// Manulane włączenie wody tryb 2 
+BLYNK_WRITE(V1)
+{
+
+if (systemOn, tryb == 2){
+  if (param.asInt() == 1) 
+  {
+   
+    // wlacznie pompy wody
+     digitalWrite(LED_BUILTIN,0);
+      digitalWrite(pompa,0);
+     Serial.println("PODLEWANIE WLACZONE");
+      dataostatniegopodlewania = now();
+      if (czaswybrany == 1)
+      {
+       delay(5000); 
+      digitalWrite(LED_BUILTIN,1);
+      digitalWrite(pompa,1);
+     Blynk.virtualWrite(V1, 0);
+     
+        }
+      else if (czaswybrany == 2)
+      {
+     delay(10000);
+      digitalWrite(LED_BUILTIN,1);
+      digitalWrite(pompa,1);
+     Blynk.virtualWrite(V1, 0);
+      
+      }
+     else if (czaswybrany == 3)
+      {
+     delay(15000);
+      digitalWrite(LED_BUILTIN,1);
+      digitalWrite(pompa,1);
+     Blynk.virtualWrite(V1, 0);
+      
+      }
+   else
+      {
+     delay(1000);
+      digitalWrite(LED_BUILTIN,1);
+      digitalWrite(pompa,1);
+     Blynk.virtualWrite(V1, 0);
+      
+      }
+    
+  } else {
+    // reset water button to unpressed state
+    Blynk.virtualWrite(V1, 0);
+      digitalWrite(LED_BUILTIN,1);
+    
+  }
+}
+  else {
+    // wyswietl komunikat ze urzadzenie jest wylaczone
+    Blynk.virtualWrite(V1, 0);
+    
+  }
+}
+
+// Automatyczne włączenie wody tryb 1
+void trybautomatyczny ()
+{
+
+int t = czasprzerwy*60; // wybor czasu przeliczony na godzine
+ if (systemOn && tryb == 1 && roznica >= t && stanswiatla == 1 && wilgotnosc <= minimalnawilgotnosc )
+ {
+    // wlacznie pompy wody
+     digitalWrite(LED_BUILTIN,0);
+      digitalWrite(pompa,0);
+     Serial.println("PODLEWANIE WLACZONE");
+      dataostatniegopodlewania = now();
+      if (czaswybrany == 1)
+      {
+       delay(5000); 
+      digitalWrite(LED_BUILTIN,1);
+      digitalWrite(pompa,1);
+     Blynk.virtualWrite(V1, 0);
+     
+        }
+      else if (czaswybrany == 2)
+      {
+     delay(10000);
+      digitalWrite(LED_BUILTIN,1);
+      digitalWrite(pompa,1);
+     Blynk.virtualWrite(V1, 0);
+      
+      }
+     else if (czaswybrany == 3)
+      {
+     delay(15000);
+      digitalWrite(LED_BUILTIN,1);
+      digitalWrite(pompa,1);
+     Blynk.virtualWrite(V1, 0);
+      
+      }
+   else
+      {
+     delay(1000);
+      digitalWrite(LED_BUILTIN,1);
+      digitalWrite(pompa,1);
+     Blynk.virtualWrite(V1, 0);
+      
+      }
+ }
+
+}
+
+void setup()
+{
+// Serial
+Serial.begin(9600);
+// Blynk 
+Blynk.begin(auth, ssid, pass);
+  
+pinMode(pompa, OUTPUT);
+digitalWrite(pompa,1);
+pinMode(LED_BUILTIN, OUTPUT);
+digitalWrite(LED_BUILTIN,1);
+pinMode(swiatlo,INPUT); //Pin#2 ustawiony jako odczyt wilgotnosci
+setSyncInterval(10 * 60); // Sync interval in seconds (10 minutes) 
+Serial.println("Setup Complete");
+}
+
+
+void loop()
+{
+  // main blynk loop
+  Blynk.run();
+   timer.run();
+  odczytczujnikow ();
+  trybautomatyczny ();
+}
